@@ -196,7 +196,7 @@
 
         async function setupWebSocket() {
             if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
-                window.ws = new WebSocket('ws://localhost:3000');
+                window.ws = new WebSocket('ws://64.23.136.20');
                 
                 window.ws.onmessage = async (event) => {
                     if (typeof event.data === 'string') {
