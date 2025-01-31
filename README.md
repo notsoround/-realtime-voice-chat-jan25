@@ -2,7 +2,7 @@
 
 This project is a real-time voice chat application integrating OpenAI’s GPT for chat responses, Whisper for speech-to-text, and TTS for text-to-speech. It uses Node.js, Express.js, WebSockets, and ffmpeg on the backend, plus the Web Audio API and MediaRecorder API on the frontend.
 
-Currently, it's not that great However, I will continue to update it as I have time to dabble. Here's a joke for you. How many people does it take to screw in a lightbulb? 2!.... We're still trying to figure out how they got in the lightbulb! 
+Currently, it's not that great However, I will continue to update it as I have time to dabble. Here's a joke for you. How many people does it take to screw in a lightbulb? A Minimum of 2!.... Ha I'll just I need I need something to cover upWe're still trying to figure out how they got in the lightbulb! 
 ---
 
 ## Project Overview
