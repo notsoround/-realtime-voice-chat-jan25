@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime ChatGPT Voice Bot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #e3f2fd;
+        }
+        #start-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+        #start-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Realtime ChatGPT Voice Bot</h1>
+        <div id="status">Click the button to start voice chat</div>
+        <button id="start-button">Start Chat</button>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('start-button');
+        const status = document.getElementById('status');
+        let mediaRecorder;
+        let audioChunks = [];
+        let silenceTimer;
+        let stream;
+        let audioContext;
+        let analyser;
+        let isRecording = false;
+
+        async function setupWebSocket() {
+            if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
+                window.ws = new WebSocket('ws://localhost:3000');
+                
+                window.ws.onmessage = async (event) => {
+                    const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    await audio.play();
+                    status.textContent = 'Listening... (Will disconnect after 30s of silence)';
+                    startRecording();
+                };
+                
+                window.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    status.textContent = 'Error processing message. Please try again.';
+                    cleanup();
+                };
+                
+                window.ws.onclose = () => {
+                    status.textContent = 'Connection closed. Click Start Chat to begin new session.';
+                    cleanup();
+                };
+                
+                await new Promise(resolve => {
+                    window.ws.onopen = () => {
+                        status.textContent = 'Connected! Starting voice chat...';
+                        resolve();
+                    };
+                });
+            }
+        }
+
+        function cleanup() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            startButton.disabled = false;
+            isRecording = false;
+        }
+
+        async function startRecording() {
+            if (isRecording) return;
+            
+            try {
+                if (!stream) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioContext = new AudioContext();
+                    analyser = audioContext.createAnalyser();
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    microphone.connect(analyser);
+                    analyser.fftSize = 2048;
+                }
+
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(stream);
+                isRecording = true;
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    isRecording = false;
+                    if (audioChunks.length > 0) {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                            window.ws.send(audioBlob);
+                            status.textContent = 'Processing your message...';
+                        }
+                    }
+                };
+
+                // Start silence detection
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                let silenceStart = null;
+                const checkSilence = () => {
+                    if (!isRecording) return;
+
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+
+                    if (average < 10) {
+                        if (!silenceStart) silenceStart = Date.now();
+                        else if (Date.now() - silenceStart > 2000) {
+                            mediaRecorder.stop();
+                            silenceStart = null;
+                            return;
+                        }
+                    } else {
+                        silenceStart = null;
+                    }
+
+                    requestAnimationFrame(checkSilence);
+                };
+
+                // Reset 30s disconnect timer
+                if (silenceTimer) clearTimeout(silenceTimer);
+                silenceTimer = setTimeout(() => {
+                    if (window.ws) {
+                        window.ws.close();
+                    }
+                    cleanup();
+                    status.textContent = 'Disconnected due to 60s silence. Click Start Chat to begin new session.';
+                }, 60000);
+
+                mediaRecorder.start();
+                status.textContent = 'Recording... Speak now';
+                checkSilence();
+
+            } catch (error) {
+                console.error('Error in startRecording:', error);
+                status.textContent = 'Error accessing microphone. Please ensure microphone permissions are granted.';
+                cleanup();
+            }
+        }
+
+        startButton.addEventListener('click', async () => {
+            try {
+                startButton.disabled = true;
+                await setupWebSocket();
+                await startRecording();
+            } catch (error) {
+                console.error('Error starting chat:', error);
+                status.textContent = 'Error starting chat. Please try again.';
+                cleanup();
+            }
+        });
+    </script>
+</body>
+</html>
